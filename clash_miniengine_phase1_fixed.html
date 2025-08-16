@@ -1,0 +1,153 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clash Royale Mini-Engine Phase 1 Fixed</title>
+<style>
+  body{margin:0;font-family:system-ui;background:#0f1220;color:#e6ecff}
+  header{padding:12px;text-align:center;background:#13193a}
+  header h1{margin:0;font-size:18px}
+  main{display:flex;gap:16px;padding:12px}
+  .deck{display:flex;flex-direction:column;gap:8px;width:160px}
+  .cardBtn{background:#171a2b;color:#e6ecff;padding:10px;border-radius:8px;border:none;cursor:pointer;text-align:left}
+  .cardBtn.active{outline:2px solid #7aa2ff}
+  .arenaWrap{flex:1;position:relative;max-width:900px}
+  .arena{position:relative;width:100%;height:520px;background:linear-gradient(#1a2142,#141a37);border-radius:16px;overflow:hidden}
+  .river{position:absolute;top:50%;left:0;right:0;height:6px;background:rgba(122,162,255,.35)}
+  .laneDivider{position:absolute;top:0;bottom:0;left:50%;width:2px;background:rgba(255,255,255,.06)}
+  .tower{position:absolute;width:60px;height:60px;background:#101533;border:1px solid #2a2e45;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .tower.king{width:80px;height:80px}
+  .tower.me.left{bottom:20px;left:80px}
+  .tower.me.right{bottom:20px;right:80px}
+  .tower.me.king{bottom:60px;left:50%;transform:translateX(-50%)}
+  .tower.op.left{top:20px;left:80px}
+  .tower.op.right{top:20px;right:80px}
+  .tower.op.king{top:20px;left:50%;transform:translateX(-50%)}
+  .hpbar{position:absolute;bottom:-12px;left:0;right:0;height:6px;background:#1a254a;border-radius:999px;overflow:hidden}
+  .hpbar>span{display:block;height:100%;background:#58d38c;width:100%}
+  .unit{position:absolute;transform:translate(-50%,-50%);padding:6px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.25);font-size:12px;white-space:nowrap}
+  .u-me{background:#0f1c4a}
+  .u-op{background:#3a1220}
+  .bar{height:12px;background:#0c1226;border-radius:999px;overflow:hidden;margin:4px 0}
+  .bar>div{height:100%;background:linear-gradient(90deg,#6fa4ff,#7aa2ff 50%,#9ac7ff);width:0%}
+</style>
+</head>
+<body>
+<header><h1>Clash Royale Mini-Engine Phase 1 Fixed</h1></header>
+<main>
+  <div class="deck" id="deck"></div>
+  <div class="arenaWrap">
+    <div class="arena" id="arena">
+      <div class="river"></div>
+      <div class="laneDivider"></div>
+      <div class="tower me left"><span>🤺</span><div class="hpbar"><span id="hpMeL"></span></div></div>
+      <div class="tower me right"><span>🤺</span><div class="hpbar"><span id="hpMeR"></span></div></div>
+      <div class="tower me king"><span>👑</span><div class="hpbar"><span id="hpMeK"></span></div></div>
+      <div class="tower op left"><span>🏰</span><div class="hpbar"><span id="hpOpL"></span></div></div>
+      <div class="tower op right"><span>🏰</span><div class="hpbar"><span id="hpOpR"></span></div></div>
+      <div class="tower op king"><span>👑</span><div class="hpbar"><span id="hpOpK"></span></div></div>
+    </div>
+    <div style="margin-top:8px;">
+      <div>Elixir</div>
+      <div class="bar"><div id="myElixirBar"></div></div>
+      <div id="myElixirNum">5.0</div>
+      <button id="resetBtn" class="cardBtn" style="margin-top:8px;">Reset Arena</button>
+    </div>
+  </div>
+</main>
+<script>
+const CARDS=[
+{name:'Mega Knight',key:'mk',cost:7,hp:3050,dps:180,speed:45},
+{name:'Ram Rider',key:'ram',cost:5,hp:1600,dps:150,speed:95},
+{name:'Musketeer',key:'mus',cost:4,hp:600,dps:120,speed:50},
+{name:'Fireball',key:'fb',cost:4,spell:true},
+{name:'Zap',key:'zap',cost:2,spell:true}
+];
+
+const state={selected:null,myElixir:5,units:[],towers:{meL:2534,meR:2534,meK:3054,opL:2534,opR:2534,opK:3054}};
+
+const deckEl=document.getElementById('deck');
+CARDS.forEach(c=>{
+  const b=document.createElement('button');
+  b.className='cardBtn';
+  b.dataset.key=c.key;
+  b.innerHTML=`${c.name} (${c.cost})`;
+  b.onclick=()=>{
+    state.selected=c.key;
+    document.querySelectorAll('.cardBtn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+  };
+  deckEl.appendChild(b);
+});
+
+const arena=document.getElementById('arena');
+let uid=1;
+
+function createUnitElement(u){
+  const el=document.createElement('div');
+  el.className='unit '+(u.me?'u-me':'u-op');
+  el.id='u'+u.id;
+  el.textContent=u.name;
+  arena.appendChild(el);
+}
+
+function spawnUnit(template,x,y,me){
+  const u={id:uid++,me,x,y,vx:0,vy:me?-template.speed/60:template.speed/60,hp:template.hp,key:template.key,name:template.name,dps:template.dps,speed:template.speed};
+  state.units.push(u);
+  createUnitElement(u);
+}
+
+arena.addEventListener('click',e=>{
+  const x=e.offsetX; const y=e.offsetY;
+  if(y<arena.clientHeight/2){alert('Place on your side only');return;}
+  if(!state.selected){alert('Select a card first');return;}
+  const card=CARDS.find(c=>c.key===state.selected); if(!card)return;
+  if(state.myElixir<card.cost){alert('Not enough elixir'); return;}
+  spawnUnit(card,x,y,true); state.myElixir-=card.cost;
+});
+
+function updateElixir(){
+  state.myElixir=Math.min(10,state.myElixir+1/180); // ~1 elixir per 2.8s
+  document.getElementById('myElixirBar').style.width=(state.myElixir/10*100)+'%';
+  document.getElementById('myElixirNum').textContent=state.myElixir.toFixed(1);
+}
+
+function updateUnits(dt){
+  state.units.forEach(u=>{
+    if(u.me){u.y-=u.speed/60; if(u.y<50){state.towers.opK=Math.max(0,state.towers.opK-u.dps*dt);}} // move & damage king tower
+    const el=document.getElementById('u'+u.id);
+    el.style.left=u.x+'px';
+    el.style.top=u.y+'px';
+  });
+}
+
+function setTowerHP(){
+  ['MeL','MeR','MeK','OpL','OpR','OpK'].forEach(k=>{
+    const el=document.getElementById('hp'+k);
+    const val=state.towers[''+k];
+    const maxHP=(k.includes('K')?3054:2534);
+    el.style.width=(Math.max(0,val)/maxHP*100)+'%';
+  });
+}
+
+function loop(ts){
+  const dt=1/60;
+  updateElixir();
+  updateUnits(dt);
+  setTowerHP();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+document.getElementById('resetBtn').onclick=()=>{
+  state.units.forEach(u=>{const el=document.getElementById('u'+u.id);if(el)el.remove();});
+  state.units=[];
+  state.myElixir=5;
+  state.towers={meL:2534,meR:2534,meK:3054,opL:2534,opR:2534,opK:3054};
+  setTowerHP();
+};
+</script>
+</body>
+</html>
